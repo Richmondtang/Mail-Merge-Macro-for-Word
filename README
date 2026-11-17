@@ -1,0 +1,273 @@
+# Enhanced Mail Merge to Email (Word VBA)
+
+A Microsoft Word macro that sends a mail merge as individual Outlook emails. Word's built-in "Send Email Messages" can't do most of what this macro adds:
+
+- **CC and BCC**, and several To / CC / BCC addresses per recipient
+- **A different subject per recipient**
+- **Attachments**, one or more per recipient
+- **Importance, sensitivity, read receipts and delivery receipts**
+- **Delayed delivery**, so emails are sent at a set date or time
+- **Send on behalf of** another address
+- **Send now, or save as drafts** to check first
+- **Problem rows are saved as drafts** listing what's wrong, instead of being skipped without warning
+- **A progress log** that records every email, so you can **resume** after an error or after stopping early
+- **Batch runs**, to process e.g. 20 emails at a time
+- **Stop safely** at any time with the Esc key
+
+Each email is set up from columns in your mail merge data source, such as an Excel sheet or CSV file.
+
+---
+
+## Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Setting up your data source](#setting-up-your-data-source)
+- [Running the macro](#running-the-macro)
+- [Stopping a run](#stopping-a-run)
+- [Progress log and resuming](#progress-log-and-resuming)
+- [Error handling](#error-handling)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Known limitations](#known-limitations)
+- [Changelog](#changelog)
+- [Credits and licence](#credits-and-licence)
+
+---
+
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| Windows | The macro uses Windows features (the Esc key check and the Documents folder location). It does not run on Mac. |
+| Microsoft Word for Windows desktop, Office 2010 or later | 32-bit or 64-bit |
+| **Classic** Outlook for Windows | The **new Outlook for Windows does not support VBA or COM automation**, so this macro can't control it. If you use the new Outlook, switch back to classic Outlook with the toggle in the top-right corner. |
+| Macros enabled | Your organisation's macro security policy must allow the macro to run. You do **not** need administrator rights. |
+
+---
+
+## Installation
+
+1. Download `EnhancedMailMerge.bas` from this repository.
+2. In Word, press **Alt+F11** to open the VBA editor.
+3. If you have an older version of this macro installed, right-click its module and choose **Remove** first. Otherwise you'll get "ambiguous name" errors.
+4. Choose where to install it:
+   - **Normal** (`Normal.dotm`): available in every document, or
+   - **Your mail merge document**: save the document as **Word Macro-Enabled Document (`.docm`)**.
+5. Select that project in the left-hand panel, then choose **File → Import File…** and select `EnhancedMailMerge.bas`.
+6. Check that the import worked: the module should be called `EnhancedMailMerge`, and **no lines should be red**.
+
+> **Copy and paste instead?** Open `EnhancedMailMerge.bas` in a text editor, copy **everything except the first line** (`Attribute VB_Name = ...`), and paste it into a new module (**Insert → Module**).
+
+---
+
+## Setting up your data source
+
+Set up a normal Word mail merge (**Mailings → Select Recipients**). The **email body** is the content of your mail merge document, including any merge fields you've inserted.
+
+The macro looks for the following **column headings**. Matching ignores capitals, spaces, numbers and punctuation, so `Read Receipt`, `read_receipt` and `ReadReceipt` all work. Because numbers are ignored, columns such as `To1`, `To2` and `To 3` are all treated as **To** columns.
+
+| Column | Required? | Accepted values | Notes |
+|---|---|---|---|
+| `To` | One of To/CC/BCC is required | Email address(es) | Several To columns are combined. |
+| `CC` | Optional | Email address(es) | Several CC columns are combined. |
+| `BCC` | Optional | Email address(es) | Several BCC columns are combined. |
+| `Subject` | **Required** | Any text | Only one Subject column is allowed. |
+| `Importance` | Optional | `high`/`h`, `normal`/`n`, `low`/`l` | If blank, Outlook's default is used. |
+| `Sensitivity` | Optional | `normal`, `personal`, `private`, `confidential` | If blank, Outlook's default is used. |
+| `ReadReceipt` | Optional | `true`/`yes`/`y`, `false`/`no`/`n` | |
+| `DeliveryReceipt` | Optional | `true`/`yes`/`y`, `false`/`no`/`n` | |
+| `DeliveryTime` or `DelayDelivery` | Optional | A date, time, or date and time | See [Delayed delivery](#delayed-delivery). |
+| `SendAs` or `SendOnBehalfOf` | Optional | Email address | Your account must have permission, or the email will be rejected when sent. |
+| `Attachment` or `Attachments` | Optional | Full file path(s), separated by `;` | e.g. `C:\Files\Report.pdf;C:\Files\Terms.pdf` |
+
+Columns with any other name are ignored by the macro, but you can still use them as merge fields in the body.
+
+Addresses are only checked for an `@`. Values that fail the check are reported as errors (see [Error handling](#error-handling)).
+
+### Example
+
+| To | CC | Subject | FirstName | Importance | Attachment |
+|---|---|---|---|---|---|
+| alex@example.com | manager@example.com | Your Q3 report | Alex | high | C:\Reports\Alex_Q3.pdf |
+| sam@example.com | | Your Q3 report | Sam | | C:\Reports\Sam_Q3.pdf;C:\Reports\Guide.pdf |
+
+### Delayed delivery
+
+| Value given | Result |
+|---|---|
+| A future date and time | Delivered at that date and time |
+| A future date only | Delivered at midnight at the start of that date |
+| A time only | Delivered at the next occurrence of that time (today, or tomorrow if it has already passed) |
+| A date or date and time in the past | Reported as an error. The email is **not** sent. |
+
+> **Tip:** to avoid the day and month being swapped (for example, 1 February read as 2 January), give dates as `yyyy-mm-dd hh:mm`. In Excel, add a helper column such as `=TEXT(A2,"yyyy-mm-dd hh:mm")` and use that as your `DeliveryTime` column.
+
+---
+
+## Running the macro
+
+1. Open your mail merge document and confirm the recipient list in **Mailings → Edit Recipient List**. Unticked records are skipped.
+2. Press **Alt+F8**, select **`EnhancedMailMerge.EnhancedMailMergeToEmail`**, and click **Run**.
+3. Answer the prompts:
+
+| Prompt | What to enter |
+|---|---|
+| **Start record** | The record to start from. If a progress log exists, the record after the last one completed is suggested. Enter `1` to start from the beginning. |
+| **Batch size** | `ALL`, or a number of emails to process in this run, such as `20`. |
+| **Send Emails** | **Yes**: send immediately. **No**: save as drafts (default). **Cancel**: stop without doing anything. |
+
+4. When the run finishes, a summary shows how many emails were sent, saved as drafts, and saved as error drafts, along with the last record completed and where to resume.
+
+> **Recommended for large sends:** run once with **No (save as drafts)**, check a few drafts in Outlook, then send.
+
+---
+
+## Stopping a run
+
+| Method | What happens |
+|---|---|
+| **Press and hold Esc** for a second or two | When the current email is finished, a prompt asks "Stop the mail merge now?". **Yes** stops cleanly; **No** carries on. No email is left half-finished. |
+| **Cancel** on the error prompt | Stops cleanly after the first email that has errors. |
+| **Ctrl+Break**, then **End** | Emergency stop only. This skips the tidy-up, so run the **`ResetMailMergeSettings`** macro afterwards to set the merge back to all records. The progress log is still correct up to the last email logged. |
+
+Emails that have already been sent can't be recalled by stopping the macro.
+
+---
+
+## Progress log and resuming
+
+Every email is written to a CSV log **as soon as it is sent or saved**. The file is closed after each entry, so the log stays accurate even after an error or if Word stops unexpectedly.
+
+**Location:** `<document name>_MailMergeLog.csv`, in the same folder as your mail merge document. If the document is unsaved, or stored on OneDrive or SharePoint, the log goes to your **Documents** folder instead. The full path is shown before each run and in the summary.
+
+| Column | Meaning |
+|---|---|
+| Timestamp | When the entry was written |
+| Record | Mail merge record number |
+| Status | See below |
+| Data row (if list not sorted/filtered) | Record number + 1, which matches the Excel row when headings are in row 1. Not accurate if you sorted or filtered in Edit Recipient List. |
+| To, Subject | For matching entries to your data |
+| Details | Error details or run totals |
+
+| Status | Meaning |
+|---|---|
+| `SENT` | Sent (or placed in the Outbox) |
+| `DRAFT` | Saved to Drafts |
+| `ERROR DRAFT` | Saved to Drafts with a list of the problems. Fix these and send them yourself. |
+| `FAILED` | An error stopped this record. If the error happened while sending, the email **may** have gone, so check your Outbox and Sent Items. |
+| `RUN START` | Start of a run, with the mode and the range of records |
+| `RUN END - COMPLETE` / `STOPPED BY USER` / `BATCH LIMIT` / `ERROR` | End of a run, with totals |
+
+**Resuming:** run the macro again. It reads the log and suggests starting at the record after the last `SENT`, `DRAFT` or `ERROR DRAFT` entry. Records marked `FAILED` are not counted as done, so the suggestion includes them again. After a `RUN END - COMPLETE`, the suggestion goes back to record 1.
+
+> ⚠️ **Don't open the log in Excel while the macro is running.** Excel locks the file and the macro can't write to it. If this happens at the start, the macro asks whether to continue without a log. If it happens partway through, the summary warns you.
+>
+> 🔒 The log contains email addresses and subjects. Store and share it accordingly.
+
+---
+
+## Error handling
+
+**Data problems** are checked for every email:
+- An address without an `@`
+- No To, CC or BCC address
+- No subject, or more than one Subject column
+- An unrecognised value for importance, sensitivity, a receipt, or delivery time
+- A delivery time in the past
+- An attachment file that can't be found
+
+When any of these occur, the email is **not sent**. It is saved to Drafts with the subject `**Errors in mail merge: <subject>` and a list of the problems in the body. The first time this happens, you're asked whether to continue. After that, error drafts are created without asking.
+
+**Unexpected errors**, such as Outlook problems or a locked file:
+- The macro stops and tells you which record it was on and what it was doing.
+- It closes anything left half-finished and restores your mail merge settings.
+- It logs the record as `FAILED`.
+
+---
+
+## Configuration
+
+At the top of the module:
+
+```vba
+Private Const SHOW_EACH_EMAIL As Boolean = False
+```
+
+| Value | Effect |
+|---|---|
+| `False` (default) | Emails are created without opening a window. Faster, and keeps Word's status bar and the stop prompt visible. |
+| `True` | Each email briefly opens in an Outlook window. Only use this if emails arrive with a missing body. |
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause and fix |
+|---|---|
+| "Mail merge is not set up for the active document" | Run **Mailings → Select Recipients** first, and run the macro from the main mail merge document. |
+| "Cannot create object" / Outlook error at the start | You're using the **new** Outlook, or classic Outlook isn't installed. Switch to classic Outlook. |
+| "Ambiguous name detected" | An older copy of the macro is still installed. Remove the old module. |
+| A line in the code is shown in red after importing | The file was probably saved with the wrong line endings (see [Repository notes](#repository-notes)). Download the raw file again, or copy and paste instead. |
+| The first prompt doesn't ask for a start record | An old version is still running. Remove it and re-import. |
+| Esc doesn't stop the run | **Hold** Esc for 1–2 seconds rather than tapping it. Make sure `SHOW_EACH_EMAIL` is `False`. |
+| The status bar progress text disappears | Word replaces the status bar text when documents change or when you click in Word. Use the progress log as the reliable record. |
+| Emails stay in the Outbox | Outlook wasn't open when the macro started. Open Outlook so the emails are sent. |
+| Later normal merges only produce one record | The macro was force-stopped with Ctrl+Break. Run `ResetMailMergeSettings`. |
+| Dates are scheduled for the wrong day | The day and month were swapped. Use the `yyyy-mm-dd hh:mm` format (see [Delayed delivery](#delayed-delivery)). |
+| Names in the log look garbled | The log is saved as plain (ANSI) text, so accented and non-English characters may not display correctly. The emails themselves are not affected. |
+
+---
+
+## Known limitations
+
+- Works with Windows and **classic** Outlook only.
+- Addresses are only checked for an `@`, not fully validated.
+- The "Data row" column in the log is only accurate if the recipient list hasn't been sorted or filtered in Word.
+- The status bar progress text is a rough guide only, because Word may replace it.
+- If an error happens in the moment between Word creating the merged document and the macro picking it up, that document may stay open. Close it yourself.
+- Emails that have already been sent can't be recalled.
+
+---
+
+## Repository notes
+
+The VBA editor expects Windows (CRLF) line endings in `.bas` files. This repository includes a `.gitattributes` file so Git always gives you CRLF line endings when you download (check out) the files:
+
+```gitattributes
+*.bas text eol=crlf
+*.cls text eol=crlf
+*.frm text eol=crlf
+```
+
+---
+
+## Changelog
+
+### v3 — 17 Nov 2026
+- Added a progress log (CSV), suggested resume point, and batch size option.
+- Esc is now checked several times per email, and prompts are forced to the front.
+- `SHOW_EACH_EMAIL` now defaults to `False`.
+- Removed the pre-Office 2010 fallback declaration (it showed as a red line on 64-bit Office).
+
+### v2 — 17 Nov 2026
+- Press Esc to stop; progress shown in the status bar; `ResetMailMergeSettings` repair macro added.
+
+### v1.1 — 17 Nov 2026
+- Error handling and clean-up; original mail merge settings restored after a run.
+- Fixed: a second Subject column wiped out other errors.
+- Removed the leading `;` from address lists; error drafts now set the body directly.
+- Past delivery times reported as errors; yes/no values read the same way for all columns.
+- Several attachments per cell; count of included records; warning if Outlook wasn't open; end-of-run summary.
+
+### v1.0 — 4 May 2026
+- Initial release.
+
+---
+
+## Credits and licence
+
+Created by **Richmond Tang**. Please share freely, keeping this attribution.
+
+<!-- TODO: choose a licence and add a LICENSE file, e.g. MIT, then update this line. -->
+See [`LICENSE`](LICENSE) for details.
